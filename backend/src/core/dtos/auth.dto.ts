@@ -3,7 +3,7 @@ export interface ILoginUserBodyDto {
   password: string;
 }
 
-export type RoleTypes = "CUSTOMER" | "AGENT" | "ADMIN";
+export type UserRole = "customer" | "agent" | "admin";
 
 export interface ILoginUserResponseDto {
   message?: string;
@@ -18,7 +18,7 @@ export interface IRegisterUserDto {
   lastName: string;
   password: string;
   email: string;
-  role?: RoleTypes;
+  role?: UserRole;
 }
 
 export interface IRegisterUserResponseDto {
@@ -37,9 +37,14 @@ export interface IValidateEmailResponse {
   id: string;
   fullName: string;
   email: string;
-  role: RoleTypes;
+  role: UserRole;
   avatarUrl: string | null;
   isEmailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface JwtPayload {
+  id: string | number | undefined;
+  role: string | undefined;
 }

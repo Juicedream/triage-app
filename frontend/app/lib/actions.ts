@@ -1,18 +1,25 @@
 "use server";
-
+import api from "@/app/lib/api";
+import { User } from "./definitions";
+import { LoginActionState } from "../ui/login-form";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { loggingIn } from "./data";
+import { isAxiosError } from "axios";
+
+const isAuthorizedRoles = ["admin", "agent"];
 
 export async function loginToApp(
-  prevState: string | undefined,
+  prevState: LoginActionState,
   formData: FormData,
-): Promise<string> {
+): Promise<LoginActionState> {
   const email = formData.get("email");
   const password = formData.get("password");
 
   if (!email || !password) {
-    return "Email and password are required";
+    return {
+      user: null,
+      error: "Email and password are required",
+      timestamp: Date.now(),
+    };
   }
 
   const payload = {
@@ -21,32 +28,73 @@ export async function loginToApp(
   };
 
   try {
-    const data = await loggingIn(payload);
+    const response = await api.post(`/auth/login`, payload);
+    const { accessToken, refreshToken } = response.data;
 
-    // Set secure HTTP-only cookies instead of browser sessionStorage
+    api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+
     const cookieStore = await cookies();
-    if (data?.token) {
-      cookieStore.set("token", data.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-      });
-    }
-    if (data?.refreshToken) {
-      cookieStore.set("refreshToken", data.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-      });
-    }
-  } catch (error) {
-    console.error("Unable to log in:", error);
-    if (error instanceof Error) {
-      return error.message; // Always return a string, never raw error objects
-    }
-    return "Failed to log in at the moment. Please try again.";
-  }
 
-  // MUST be called OUTSIDE the try-catch block
-  redirect("/dashboard");
+    cookieStore.set("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 15 * 60, // 15m
+    });
+
+    cookieStore.set("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    // fetch auth user
+    const result = await api.get(`/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const user: User = result.data.user;
+
+    if (user && !isAuthorizedRoles.includes(user.role)) {
+      await api.post(
+        "/auth/logout",
+        {},
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      cookieStore.delete("refreshToken");
+      cookieStore.delete("accessToken");
+      cookieStore.delete("userId");
+
+      return { error: "Forbidden: Unauthorized access", user: null };
+    }
+
+    cookieStore.set("userId", user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 15 * 60, // 15m
+    });
+
+    return { user, error: null, timestamp: Date.now() };
+  } catch (error) {
+    console.error("Login action error:", error);
+
+    let errorMessage = "Failed to log in at the moment. Please try again.";
+
+    if (isAxiosError(error) && error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+    return {
+      user: null,
+      error: errorMessage,
+      timestamp: Date.now(),
+    };
+  }
 }
