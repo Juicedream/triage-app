@@ -1,19 +1,22 @@
-import express from "express";
-import AuthController from "../controllers/auth_controllers.js";
+import express, { request, response, type Request } from "express";
+
 import { AuthValidation } from "../services/validation.service.js";
 import { validateRequest } from "../middlewares/validateRequest.middleware.js";
-import { AuthMiddleware } from "../middlewares/auth.middleware.js";
+import { authenticateToken } from "../middlewares/auth.middleware.js";
 import { authLimiter } from "../middlewares/ratelimiter.middleware.js";
+import { AuthController } from "../controllers/auth_controllers.js";
 const authRouter = express.Router();
+
+const authController = new AuthController();
 
 authRouter
   .get(
     "/email-validation", // Verifies email via token query /email-validation?token=*******
     AuthValidation.emailValidation,
     validateRequest,
-    AuthController.validateEmail,
+    authController.validateEmail,
   )
-  .get("/me", AuthMiddleware.all, AuthController.me);
+  .get("/me", authenticateToken, authController.me);
 
 authRouter
   .post(
@@ -21,21 +24,21 @@ authRouter
     AuthValidation.login,
     validateRequest,
     authLimiter,
-    AuthController.login,
+    authController.login,
   )
   .post(
     "/register",
     AuthValidation.register,
     validateRequest,
-    AuthController.register,
+    authController.register,
   )
   .post(
     "/resend-email-verification-link", // It requires an email in the body
     AuthValidation.resendEmailTokenLink,
     validateRequest,
-    AuthController.resendEmailToken,
+    authController.resendEmailToken,
   )
-  .post("/refresh", AuthMiddleware.all, AuthController.refresh)
-  .post("/logout", AuthMiddleware.all, AuthController.logout);
+  .post("/refresh", authenticateToken, authController.refresh)
+  .post("/logout", authenticateToken, authController.logout);
 
 export default authRouter;

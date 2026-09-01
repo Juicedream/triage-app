@@ -1,4 +1,4 @@
-export type RoleTypes = "customer" | "agent" | "admiin";
+export type RoleTypes = "agent" | "admiin";
 
 export type User = {
   id: string;
